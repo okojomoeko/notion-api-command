@@ -24,40 +24,60 @@ function version {
 }
 
 function get_completed_ids {
-  COMPLETED_ID=($(curl -X POST 'https://api.notion.com/v1/databases/'$DATABASE_ID'/query' \
+  comp_ids=$(curl -X POST 'https://api.notion.com/v1/databases/'$DATABASE_ID'/query' \
       -H 'Authorization: Bearer '"$NOTION_API_KEY"'' \
-      -H 'Notion-Version: 2021-05-13' \
       -H "Content-Type: application/json" \
+      -H "Notion-Version: 2022-06-28" \
       --data '{
         "filter": {
             "property": "Status",
-            "select": {
+            "status": {
               "equals": "Completed"
           }
         }
       }' \
-    | jq -r '[.results[].id] | @sh' | tr -d \'\"))
-  echo $COMPLETED_ID
+    | jq -r '.results[].id')
+  echo $comp_ids
 }
 
 function delete_completed {
-  get_completed_ids
-  for item in "${COMPLETED_ID[@]}" ; do
-    URL="https://api.notion.com/v1/blocks/${item}"
-
-    RESULT=$(curl -X DELETE $URL \
-      -H 'Authorization: Bearer '"$NOTION_API_KEY"'' \
-      -H 'Notion-Version: 2021-08-16' \
-    | jq -r '.archived')
-    echo $RESULT
+  comp_ids=($(get_completed_ids))
+  for id in "${comp_ids[@]}" ; do
+    result=$(curl https://api.notion.com/v1/pages/$id \
+    -H 'Authorization: Bearer '"$NOTION_API_KEY"'' \
+    -H "Content-Type: application/json" \
+    -H "Notion-Version: 2022-06-28" \
+    -X PATCH \
+      --data '{
+      "archived": true
+    }')
+    echo $result
   done
 }
+
+function configure {
+  mkdir -p $HOME/.config/nac
+  read -sp "Enter your DATABASE_ID: " DATABASE_ID
+  echo ""
+  read -sp "Enter your NOTION_API_KEY: " NOTION_API_KEY
+  (echo "DATABASE_ID=$DATABASE_ID"; echo "NOTION_API_KEY=$NOTION_API_KEY") > $HOME/.config/nac/cred
+  # echo "NOTION_API_KEY=$NOTION_API_KEY" > $HOME/.config/nac/cred
+}
+
+set -a
+source $HOME/.config/nac/cred
+set +a
 
 while [ $# -gt 0 ]; do
 
   case ${1} in
     --debug|-d)
         set -x
+    ;;
+
+    configure)
+      configure
+      exit 0
     ;;
 
     get_completed)
